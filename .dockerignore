@@ -1,0 +1,16 @@
+.claude/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+.venv
+venv/
+db.sqlite3
+staticfiles/
+.git/
+.gitignore
