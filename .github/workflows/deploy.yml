@@ -23,7 +23,6 @@ on:
 
 env:
   IMAGE: ${{ secrets.DOCKER_USERNAME }}/coffee-restaurant
-  DEPLOY_DIR: /opt/coffee-restaurant
 
 jobs:
   # ─── 1. Docker image build qilish va Docker Hub ga push ───────────
@@ -71,81 +70,56 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
           script: |
-            set -euo pipefail
+            set -eu
             DEPLOY_DIR="/opt/coffee-restaurant"
             REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 1: Docker o'rnatish"
-            echo "════════════════════════════════════════"
+            # ── 1. Docker o'rnatish ────────────────────────────────────────
             if ! command -v docker &>/dev/null; then
-              curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-              sudo sh /tmp/get-docker.sh
+              echo ">>> Docker o'rnatilmoqda..."
+              curl -fsSL https://get.docker.com | sudo sh
               sudo usermod -aG docker "$USER"
-              rm -f /tmp/get-docker.sh
-              echo "✓ Docker o'rnatildi"
-            else
-              echo "✓ Docker allaqachon mavjud: $(docker --version 2>/dev/null || sudo docker --version)"
+              echo ">>> Docker o'rnatildi"
             fi
-
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 2: Docker servisini ishga tushirish"
-            echo "════════════════════════════════════════"
-            sudo systemctl enable --quiet docker
+            sudo systemctl enable docker --quiet
             sudo systemctl start docker
-            echo "✓ Docker servis faol"
+            echo ">>> Docker: OK"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 3: Docker Compose plugin o'rnatish"
-            echo "════════════════════════════════════════"
+            # ── 2. Docker Compose plugin o'rnatish ─────────────────────────
             if ! sudo docker compose version &>/dev/null 2>&1; then
-              echo "Docker Compose plugin o'rnatilmoqda..."
-              COMPOSE_VER=$(curl -fsSL "https://api.github.com/repos/docker/compose/releases/latest" \
-                | grep '"tag_name"' | head -1 | sed 's/.*"v\([^"]*\)".*/\1/')
-              sudo mkdir -p /usr/local/lib/docker/cli-plugins
-              sudo curl -SL \
-                "https://github.com/docker/compose/releases/download/v${COMPOSE_VER}/docker-compose-linux-x86_64" \
-                -o /usr/local/lib/docker/cli-plugins/docker-compose
-              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-              echo "✓ Docker Compose v${COMPOSE_VER} o'rnatildi"
-            else
-              echo "✓ Docker Compose allaqachon mavjud"
+              echo ">>> Docker Compose o'rnatilmoqda..."
+              sudo apt-get update -qq
+              sudo apt-get install -y --no-install-recommends docker-compose-plugin
+              echo ">>> Docker Compose: OK"
             fi
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 4: Git o'rnatish"
-            echo "════════════════════════════════════════"
+            # ── 3. Git o'rnatish ───────────────────────────────────────────
             if ! command -v git &>/dev/null; then
+              echo ">>> Git o'rnatilmoqda..."
               sudo apt-get update -qq
               sudo apt-get install -y --no-install-recommends git
-              echo "✓ Git o'rnatildi"
-            else
-              echo "✓ Git allaqachon mavjud"
             fi
+            echo ">>> Git: OK"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 5: Repo clone / pull"
-            echo "════════════════════════════════════════"
+            # ── 4. Repo clone yoki pull ────────────────────────────────────
             sudo mkdir -p "${DEPLOY_DIR}"
             sudo chown -R "$USER:$USER" "${DEPLOY_DIR}"
 
             if [ -d "${DEPLOY_DIR}/.git" ]; then
+              echo ">>> Repo yangilanmoqda..."
               git -C "${DEPLOY_DIR}" remote set-url origin "${REPO_URL}"
               git -C "${DEPLOY_DIR}" fetch origin main --quiet
               git -C "${DEPLOY_DIR}" reset --hard origin/main
-              git -C "${DEPLOY_DIR}" remote set-url origin \
-                "https://github.com/${{ github.repository }}.git"
-              echo "✓ Repo yangilandi"
             else
+              echo ">>> Repo clone qilinmoqda..."
+              rm -rf "${DEPLOY_DIR}"
               git clone --depth 1 "${REPO_URL}" "${DEPLOY_DIR}"
-              git -C "${DEPLOY_DIR}" remote set-url origin \
-                "https://github.com/${{ github.repository }}.git"
-              echo "✓ Repo clone qilindi"
             fi
+            git -C "${DEPLOY_DIR}" remote set-url origin \
+              "https://github.com/${{ github.repository }}.git"
+            echo ">>> Repo: OK"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 6: .env fayl yaratish"
-            echo "════════════════════════════════════════"
+            # ── 5. .env fayl yaratish ──────────────────────────────────────
             cat > "${DEPLOY_DIR}/.env" << 'ENV_EOF'
             DOCKER_IMAGE=${{ secrets.DOCKER_USERNAME }}/coffee-restaurant
             DJANGO_SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}
@@ -157,36 +131,27 @@ jobs:
             DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
             ENV_EOF
             chmod 600 "${DEPLOY_DIR}/.env"
-            echo "✓ .env fayl yaratildi (chmod 600)"
+            echo ">>> .env: OK"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 7: Docker image pull qilish"
-            echo "════════════════════════════════════════"
+            # ── 6. Docker Hub login va image pull ──────────────────────────
             echo "${{ secrets.DOCKER_PASSWORD }}" \
               | sudo docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
             sudo docker pull "${{ secrets.DOCKER_USERNAME }}/coffee-restaurant:latest"
-            echo "✓ Image pull qilindi"
+            echo ">>> Image: OK"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 8: Docker Compose bilan deploy"
-            echo "════════════════════════════════════════"
+            # ── 7. Docker Compose bilan deploy ────────────────────────────
             cd "${DEPLOY_DIR}"
             sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo "✓ Konteynerlar ishga tushdi"
+            echo ">>> Konteynerlar: OK"
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 9: Holat tekshirish"
-            echo "════════════════════════════════════════"
+            # ── 8. Holat tekshirish ────────────────────────────────────────
             sleep 15
             sudo docker compose -f docker-compose.prod.yml ps
 
-            echo "════════════════════════════════════════"
-            echo " BOSQICH 10: Eski image'larni tozalash"
-            echo "════════════════════════════════════════"
+            # ── 9. Eski image'larni tozalash ───────────────────────────────
             sudo docker image prune -f
             sudo docker logout
-            echo "✓ Tozalash bajarildi"
 
             echo ""
-            echo "🚀 DEPLOY MUVAFFAQIYATLI YAKUNLANDI!"
-            echo "   URL: http://${{ secrets.EC2_HOST }}"
+            echo "DEPLOY MUVAFFAQIYATLI YAKUNLANDI!"
+            echo "URL: http://${{ secrets.EC2_HOST }}"
