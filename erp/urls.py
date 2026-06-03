@@ -5,6 +5,7 @@ app_name = 'erp'
 
 urlpatterns = [
     path('', views.erp_dashboard, name='dashboard'),
+    path('buyurtma/qabul/', views.buyurtma_qabul, name='buyurtma_qabul'),
     path('mahsulotlar/', views.mahsulotlar, name='mahsulotlar'),
     path('mahsulotlar/yangi/', views.mahsulot_yaratish, name='mahsulot_yaratish'),
     path('mahsulotlar/<int:pk>/tahrirlash/', views.mahsulot_tahrirlash, name='mahsulot_tahrirlash'),

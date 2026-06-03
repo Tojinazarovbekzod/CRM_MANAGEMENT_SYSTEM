@@ -1,7 +1,41 @@
+import json
 from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
+from django.contrib import messages
 from django.db.models import Sum, F
-from .models import Mahsulot, Buyurtma, Xodim, MoliyaviyYozuv, BUYURTMA_HOLATLARI
+from .models import Mahsulot, Buyurtma, BuyurtmaQatori, Xodim, MoliyaviyYozuv, BUYURTMA_HOLATLARI
 from .forms import MahsulotForm, BuyurtmaForm, XodimForm, MoliyaviyYozuvForm
+
+
+@login_required(login_url='/login/')
+@require_POST
+def buyurtma_qabul(request):
+    try:
+        cart = json.loads(request.POST.get('cart', '[]'))
+    except (json.JSONDecodeError, ValueError):
+        cart = []
+
+    if not cart:
+        messages.error(request, "Savat bo'sh — avval mahsulot tanlang.")
+        return redirect('menu')
+
+    mijoz_ism = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
+    buyurtma = Buyurtma.objects.create(mijoz_ism=mijoz_ism, holat='yangi')
+
+    for item in cart:
+        try:
+            BuyurtmaQatori.objects.create(
+                buyurtma=buyurtma,
+                mahsulot_nomi=item['name'],
+                miqdor=int(item.get('qty', 1)),
+                narx=float(item['price']),
+            )
+        except (KeyError, ValueError):
+            continue
+
+    messages.success(request, f"Buyurtma #{buyurtma.pk} muvaffaqiyatli qabul qilindi!")
+    return redirect('menu')
 
 
 def erp_dashboard(request):

@@ -1,4 +1,52 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.forms import AuthenticationForm
+from django.contrib import messages
+from django.http import JsonResponse
+from .forms import RegisterForm
+
+
+def health(request):
+    return JsonResponse({'status': 'ok'})
+
+
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect('home')
+    if request.method == 'POST':
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            messages.success(request, f"Xush kelibsiz, {user.first_name} {user.last_name}!")
+            return redirect('home')
+    else:
+        form = RegisterForm()
+    return render(request, 'register.html', {'form': form})
+
+
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect('home')
+    if request.method == 'POST':
+        form = AuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            messages.success(request, f"Xush kelibsiz, {user.username}!")
+            return redirect(request.GET.get('next', 'home'))
+        else:
+            messages.error(request, "Username yoki parol noto'g'ri.")
+    else:
+        form = AuthenticationForm()
+    return render(request, 'login.html', {'form': form})
+
+
+def logout_view(request):
+    if request.method == 'POST':
+        logout(request)
+        messages.info(request, "Tizimdan chiqildi.")
+    return redirect('home')
 
 
 def home(request):

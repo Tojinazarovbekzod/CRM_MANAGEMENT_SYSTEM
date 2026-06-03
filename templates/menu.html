@@ -69,7 +69,7 @@
                         </div>
                         <div class="flex justify-between items-center mt-3">
                             <span class="text-coffee-700 font-bold text-lg">${{ item.price }}</span>
-                            <div class="flex gap-1">
+                            <div class="flex gap-1 items-center">
                                 {% if item.sizes %}
                                 <select class="text-xs border border-coffee-200 rounded-lg px-2 py-1 text-coffee-700 mr-2 outline-none">
                                     {% for size in item.sizes %}
@@ -77,7 +77,10 @@
                                     {% endfor %}
                                 </select>
                                 {% endif %}
-                                <button class="btn-coffee text-white text-xs px-4 py-1.5 rounded-full font-semibold">Add</button>
+                                <button onclick="addToCart('{{ item.name|escapejs }}', {{ item.price }})"
+                                    class="btn-coffee text-white text-xs px-4 py-1.5 rounded-full font-semibold">
+                                    + Add
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -88,6 +91,65 @@
         {% endfor %}
     </div>
 </section>
+
+<!-- Flash messages -->
+{% if messages %}
+<div class="fixed top-24 right-4 z-50 space-y-2" id="flashMessages">
+    {% for message in messages %}
+    <div class="px-5 py-3 rounded-xl shadow-lg text-sm font-medium
+        {% if message.tags == 'error' %}bg-red-500 text-white{% else %}bg-coffee-600 text-white{% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Floating Cart Button -->
+<button onclick="toggleCart()"
+    class="fixed bottom-8 right-8 z-40 btn-coffee text-white w-16 h-16 rounded-full shadow-2xl flex items-center justify-center">
+    <span class="text-2xl">🛒</span>
+    <span id="cartCount"
+        class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold hidden">0</span>
+</button>
+
+<!-- Cart Sidebar -->
+<div id="cartSidebar"
+    class="fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="bg-coffee-950 px-6 py-5 flex justify-between items-center">
+        <h2 class="text-white font-bold text-lg">Savat</h2>
+        <button onclick="toggleCart()" class="text-coffee-300 hover:text-white text-2xl leading-none">&times;</button>
+    </div>
+
+    <div id="cartItems" class="flex-1 overflow-y-auto px-4 py-4 space-y-3"></div>
+
+    <div class="border-t border-coffee-100 px-6 py-5">
+        <div class="flex justify-between text-sm font-semibold text-coffee-900 mb-4">
+            <span>Jami:</span>
+            <span id="cartTotal">$0.00</span>
+        </div>
+        {% if user.is_authenticated %}
+        <form method="post" action="{% url 'erp:buyurtma_qabul' %}" id="orderForm">
+            {% csrf_token %}
+            <input type="hidden" name="cart" id="cartData">
+            <button type="submit" onclick="submitOrder(event)"
+                class="w-full btn-coffee text-white py-3 rounded-xl font-semibold text-sm">
+                Buyurtma berish
+            </button>
+        </form>
+        {% else %}
+        <a href="{% url 'login' %}?next=/menu/"
+            class="block w-full btn-coffee text-white py-3 rounded-xl font-semibold text-sm text-center">
+            Kirish kerak
+        </a>
+        <p class="text-xs text-gray-400 text-center mt-2">Buyurtma berish uchun tizimga kiring</p>
+        {% endif %}
+        <button onclick="clearCart()" class="w-full mt-2 text-xs text-gray-400 hover:text-red-500 py-1">
+            Savatni tozalash
+        </button>
+    </div>
+</div>
+<div id="cartOverlay" onclick="toggleCart()"
+    class="fixed inset-0 bg-black/40 z-40 hidden"></div>
 
 <!-- Allergen Note -->
 <section class="py-8 bg-coffee-50 border-t border-coffee-100">
@@ -103,6 +165,107 @@
 
 {% block extra_js %}
 <script>
+    // --- Cart ---
+    let cart = JSON.parse(localStorage.getItem('bb_cart') || '[]');
+
+    function saveCart() {
+        localStorage.setItem('bb_cart', JSON.stringify(cart));
+        renderCart();
+    }
+
+    function addToCart(name, price) {
+        const existing = cart.find(i => i.name === name);
+        if (existing) {
+            existing.qty += 1;
+        } else {
+            cart.push({ name, price: parseFloat(price), qty: 1 });
+        }
+        saveCart();
+        // Open cart
+        document.getElementById('cartSidebar').classList.remove('translate-x-full');
+        document.getElementById('cartOverlay').classList.remove('hidden');
+    }
+
+    function removeFromCart(name) {
+        cart = cart.filter(i => i.name !== name);
+        saveCart();
+    }
+
+    function changeQty(name, delta) {
+        const item = cart.find(i => i.name === name);
+        if (!item) return;
+        item.qty += delta;
+        if (item.qty <= 0) cart = cart.filter(i => i.name !== name);
+        saveCart();
+    }
+
+    function clearCart() {
+        cart = [];
+        saveCart();
+    }
+
+    function renderCart() {
+        const container = document.getElementById('cartItems');
+        const countEl = document.getElementById('cartCount');
+        const totalEl = document.getElementById('cartTotal');
+        const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+        const count = cart.reduce((s, i) => s + i.qty, 0);
+
+        countEl.textContent = count;
+        count > 0 ? countEl.classList.remove('hidden') : countEl.classList.add('hidden');
+        totalEl.textContent = '$' + total.toFixed(2);
+
+        if (cart.length === 0) {
+            container.innerHTML = '<p class="text-gray-400 text-sm text-center mt-8">Savat bo\'sh</p>';
+            return;
+        }
+        container.innerHTML = cart.map(item => `
+            <div class="flex items-center gap-3 bg-coffee-50 rounded-xl p-3">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-coffee-900 truncate">${item.name}</p>
+                    <p class="text-xs text-coffee-500">$${item.price.toFixed(2)} × ${item.qty}</p>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="changeQty('${item.name.replace(/'/g,"\\'")}', -1)"
+                        class="w-6 h-6 bg-coffee-200 hover:bg-coffee-300 rounded-full text-coffee-800 text-sm font-bold flex items-center justify-center">−</button>
+                    <span class="text-sm font-bold w-5 text-center">${item.qty}</span>
+                    <button onclick="changeQty('${item.name.replace(/'/g,"\\'")}', 1)"
+                        class="w-6 h-6 bg-coffee-200 hover:bg-coffee-300 rounded-full text-coffee-800 text-sm font-bold flex items-center justify-center">+</button>
+                </div>
+                <button onclick="removeFromCart('${item.name.replace(/'/g,"\\'")}')
+                    " class="text-red-400 hover:text-red-600 text-lg leading-none ml-1">&times;</button>
+            </div>
+        `).join('');
+    }
+
+    function toggleCart() {
+        const sidebar = document.getElementById('cartSidebar');
+        const overlay = document.getElementById('cartOverlay');
+        sidebar.classList.toggle('translate-x-full');
+        overlay.classList.toggle('hidden');
+    }
+
+    function submitOrder(e) {
+        if (cart.length === 0) {
+            e.preventDefault();
+            alert("Savat bo'sh!");
+            return;
+        }
+        document.getElementById('cartData').value = JSON.stringify(cart);
+        // Clear cart after submit
+        localStorage.removeItem('bb_cart');
+    }
+
+    // Init on load
+    renderCart();
+
+    // Auto-hide flash messages
+    setTimeout(() => {
+        const el = document.getElementById('flashMessages');
+        if (el) el.style.opacity = '0', el.style.transition = 'opacity 1s', setTimeout(() => el.remove(), 1000);
+    }, 3000);
+
+    // --- Filter ---
     function filterMenu(filter) {
         // Update button styles
         document.querySelectorAll('.filter-btn').forEach(btn => {

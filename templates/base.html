@@ -93,7 +93,16 @@
                     <a href="/menu/" class="nav-link text-coffee-200 hover:text-white text-sm font-medium transition-colors">Menu</a>
                     <a href="/about/" class="nav-link text-coffee-200 hover:text-white text-sm font-medium transition-colors">About</a>
                     <a href="/contact/" class="nav-link text-coffee-200 hover:text-white text-sm font-medium transition-colors">Contact</a>
-                    <a href="/contact/" class="btn-coffee text-white px-5 py-2 rounded-full text-sm font-semibold">Reserve a Table</a>
+                    {% if user.is_authenticated %}
+                        <span class="text-coffee-300 text-sm">{{ user.first_name }} {{ user.last_name }}</span>
+                        <form method="post" action="{% url 'logout' %}" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="text-coffee-200 hover:text-white text-sm font-medium transition-colors">Chiqish</button>
+                        </form>
+                    {% else %}
+                        <a href="{% url 'login' %}" class="nav-link text-coffee-200 hover:text-white text-sm font-medium transition-colors">Kirish</a>
+                        <a href="{% url 'register' %}" class="btn-coffee text-white px-5 py-2 rounded-full text-sm font-semibold">Ro'yxat</a>
+                    {% endif %}
                 </div>
 
                 <!-- Mobile hamburger -->
@@ -112,7 +121,16 @@
                 <a href="/menu/" class="text-coffee-200 hover:text-white text-sm font-medium">Menu</a>
                 <a href="/about/" class="text-coffee-200 hover:text-white text-sm font-medium">About</a>
                 <a href="/contact/" class="text-coffee-200 hover:text-white text-sm font-medium">Contact</a>
-                <a href="/contact/" class="btn-coffee text-white px-5 py-2 rounded-full text-sm font-semibold text-center">Reserve a Table</a>
+                {% if user.is_authenticated %}
+                    <span class="text-coffee-300 text-sm">{{ user.first_name }} {{ user.last_name }}</span>
+                    <form method="post" action="{% url 'logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="text-coffee-200 hover:text-white text-sm font-medium text-left">Chiqish</button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}" class="text-coffee-200 hover:text-white text-sm font-medium">Kirish</a>
+                    <a href="{% url 'register' %}" class="btn-coffee text-white px-5 py-2 rounded-full text-sm font-semibold text-center">Ro'yxat</a>
+                {% endif %}
             </div>
         </div>
     </nav>
