@@ -94,6 +94,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
+          debug: true
           envs: DOCKER_IMAGE,GITHUB_ACTOR,GITHUB_TOKEN,GITHUB_REPO,DJANGO_SECRET_KEY,ALLOWED_HOSTS,EC2_HOST
           script: |
             set -euo pipefail
