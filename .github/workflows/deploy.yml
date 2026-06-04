@@ -165,7 +165,7 @@ jobs:
             cd "${DEPLOY_DIR}"
             sudo docker pull "${IMAGE}:latest"
             COMPOSE_EXIT=0
-            sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans || COMPOSE_EXIT=$?
+            sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate || COMPOSE_EXIT=$?
             echo ">>> Konteynerlar: Started (docker compose exit ${COMPOSE_EXIT})"
 
             # ── 9. Healthcheck validation va diagnostics ──────────────────
