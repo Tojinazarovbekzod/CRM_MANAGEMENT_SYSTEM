@@ -1,8 +1,8 @@
 # ═══════════════════════════════════════════════════════════════════
 #  GitHub Secrets sozlash (Settings → Secrets → Actions):
 #
-#  EC2_HOST          — EC2 public IP yoki domain (masalan: 54.12.34.56)
-#  EC2_USER          — SSH foydalanuvchi (Ubuntu AMI uchun: ubuntu)
+#  EC2_HOST          — EC2 public IP (masalan: 54.12.34.56)
+#  EC2_USER          — SSH foydalanuvchi (Ubuntu uchun: ubuntu)
 #  EC2_SSH_KEY       — .pem formatidagi private SSH kalit (to'liq matn)
 #  DJANGO_SECRET_KEY — Django secret key (50+ tasodifiy belgi)
 #  ALLOWED_HOSTS     — Vergul bilan: 54.12.34.56,yourdomain.com
@@ -16,56 +16,151 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ─── Deploy EC2 ga ────────────────────────────────────────────────
+  # ─── 1. Test ──────────────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Kutubxonalar o'rnatish
+        run: pip install -r requirements.txt
+
+      - name: Django check va testlar
+        run: |
+          python manage.py check
+          python manage.py test --verbosity=2
+        env:
+          DJANGO_SECRET_KEY: ci-test-secret-key-not-for-production
+          ALLOWED_HOSTS: localhost
+          DEBUG: '1'
+
+  # ─── 2. Docker image build va ghcr.io ga push ─────────────────────
+  build-push:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+  # ─── 3. EC2 ga deploy ────────────────────────────────────────────
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
+    needs: build-push
     steps:
       - name: Server sozlash va deploy
         uses: appleboy/ssh-action@v1
+        env:
+          DOCKER_IMAGE: ghcr.io/${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
+          envs: DOCKER_IMAGE,GITHUB_ACTOR,GITHUB_TOKEN,GITHUB_REPO,DJANGO_SECRET_KEY,ALLOWED_HOSTS,EC2_HOST
           script: |
             set -euo pipefail
             DEPLOY_DIR="/opt/coffee-restaurant"
-            REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+            IMAGE="${DOCKER_IMAGE,,}"
 
-            # ── 1. Git o'rnatish ───────────────────────────────────────────
-            if ! command -v git >/dev/null 2>&1; then
-              echo ">>> Git o'rnatilmoqda..."
-              sudo apt-get update -qq
-              sudo apt-get install -y --no-install-recommends git
+            # ── 1. Docker o'rnatish ────────────────────────────────────────
+            if ! command -v docker >/dev/null 2>&1; then
+              echo ">>> Docker o'rnatilmoqda..."
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo usermod -aG docker "$USER"
+              echo ">>> Docker o'rnatildi, yangi sessiya kerak bo'lishi mumkin"
             fi
-            echo ">>> Git: OK"
+            echo ">>> Docker: $(sudo docker --version)"
 
-            # ── 2. Repo clone yoki pull ────────────────────────────────────
+            # ── 2. Docker Compose plugin o'rnatish ─────────────────────────
+            if ! sudo docker compose version >/dev/null 2>&1; then
+              echo ">>> Docker Compose o'rnatilmoqda..."
+              DOCKER_PLUGIN="/usr/local/lib/docker/cli-plugins"
+              sudo mkdir -p "${DOCKER_PLUGIN}"
+              sudo curl -SL "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64" \
+                -o "${DOCKER_PLUGIN}/docker-compose"
+              sudo chmod +x "${DOCKER_PLUGIN}/docker-compose"
+            fi
+            echo ">>> Docker Compose: $(sudo docker compose version)"
+
+            # ── 3. ghcr.io ga login ────────────────────────────────────────
+            echo "${GITHUB_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            echo ">>> ghcr.io: OK"
+
+            # ── 4. Repo clone yoki pull ────────────────────────────────────
             sudo mkdir -p "${DEPLOY_DIR}"
             sudo chown -R "$USER:$USER" "${DEPLOY_DIR}"
 
             if [ -d "${DEPLOY_DIR}/.git" ]; then
               echo ">>> Repo yangilanmoqda..."
-              git -C "${DEPLOY_DIR}" remote set-url origin "${REPO_URL}"
+              git -C "${DEPLOY_DIR}" remote set-url origin \
+                "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
               git -C "${DEPLOY_DIR}" fetch origin main --quiet
               git -C "${DEPLOY_DIR}" reset --hard origin/main
+              git -C "${DEPLOY_DIR}" remote set-url origin \
+                "https://github.com/${GITHUB_REPO}.git"
             else
               echo ">>> Repo clone qilinmoqda..."
-              rm -rf "${DEPLOY_DIR}"
-              git clone --depth 1 "${REPO_URL}" "${DEPLOY_DIR}"
+              git clone --depth 1 \
+                "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" \
+                "${DEPLOY_DIR}"
+              git -C "${DEPLOY_DIR}" remote set-url origin \
+                "https://github.com/${GITHUB_REPO}.git"
             fi
-            git -C "${DEPLOY_DIR}" remote set-url origin \
-              "https://github.com/${{ github.repository }}.git"
             echo ">>> Repo: OK"
 
-            # ── 3. .env fayl yaratish ──────────────────────────────────────
-            if [ ! -f "${DEPLOY_DIR}/.env" ]; then
-              touch "${DEPLOY_DIR}/.env"
-            fi
+            # ── 5. .env fayl yaratish ──────────────────────────────────────
+            cat > "${DEPLOY_DIR}/.env" <<EOF
+DOCKER_IMAGE=${IMAGE}
+DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+ALLOWED_HOSTS=${ALLOWED_HOSTS}
+CSRF_TRUSTED_ORIGINS=http://${EC2_HOST}
+EOF
             chmod 600 "${DEPLOY_DIR}/.env"
             echo ">>> .env: OK"
 
+            # ── 6. Docker Compose orqali ishga tushirish ───────────────────
+            cd "${DEPLOY_DIR}"
+            sudo docker pull "${IMAGE}:latest"
+            sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            sudo docker system prune -f
+            echo ">>> Konteynerlar: OK"
+
             echo ""
             echo "DEPLOY MUVAFFAQIYATLI YAKUNLANDI!"
-            echo "URL: http://${{ secrets.EC2_HOST }}"
+            echo "URL: http://${EC2_HOST}"
