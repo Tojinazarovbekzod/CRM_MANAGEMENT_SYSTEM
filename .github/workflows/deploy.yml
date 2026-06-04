@@ -206,6 +206,11 @@ jobs:
               fi
             done
 
+            if [ "${HEALTH}" != "healthy" ] && [ "${UNHEALTHY}" != "true" ]; then
+              echo "❌ Container health status did not become healthy (last status=${HEALTH})"
+              UNHEALTHY=true
+            fi
+
             if [ "${COMPOSE_FAILED}" = "true" ] || [ "${UNHEALTHY}" = "true" ]; then
               echo ""
               echo "╔════════════════════════════════════════════════════════════╗"
@@ -226,6 +231,10 @@ jobs:
               Exit Code: {{.State.ExitCode}}
               Status: {{.State.Status}}
               Error: {{.State.Error}}'
+              echo ""
+
+              echo "=== 3.1 Healthcheck Log ==="
+              sudo docker inspect coffee-restaurant-web-1 --format='{{range .State.Health.Log}}Start={{.Start}} End={{.End}} exit={{.ExitCode}} output={{printf "%s\n" .Output}}{{end}}'
               echo ""
 
               echo "=== 4. Docker Compose Logs ==="
