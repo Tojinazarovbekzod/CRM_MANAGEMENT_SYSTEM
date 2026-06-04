@@ -215,9 +215,9 @@ jobs:
 
               echo "=== 3. Container State Inspector ==="
               sudo docker inspect coffee-restaurant-web-1 --format='Health: {{.State.Health.Status}}
-Exit Code: {{.State.ExitCode}}
-Status: {{.State.Status}}
-Error: {{.State.Error}}'
+              Exit Code: {{.State.ExitCode}}
+              Status: {{.State.Status}}
+              Error: {{.State.Error}}'
               echo ""
 
               echo "=== 4. Docker Compose Logs ==="
