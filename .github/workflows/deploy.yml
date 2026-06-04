@@ -164,13 +164,21 @@ jobs:
             # ── 8. Docker Compose orqali ishga tushirish ───────────────────
             cd "${DEPLOY_DIR}"
             sudo docker pull "${IMAGE}:latest"
-            sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo ">>> Konteynerlar: Started"
+            COMPOSE_EXIT=0
+            sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans || COMPOSE_EXIT=$?
+            echo ">>> Konteynerlar: Started (docker compose exit ${COMPOSE_EXIT})"
 
             # ── 9. Healthcheck validation va diagnostics ──────────────────
             echo ""
             echo ">>> Healthcheck validation..."
             sleep 8
+
+            COMPOSE_FAILED=false
+            UNHEALTHY=false
+            if [ "${COMPOSE_EXIT}" -ne 0 ]; then
+              COMPOSE_FAILED=true
+              echo "⚠️ docker compose failed with exit code ${COMPOSE_EXIT}"
+            fi
 
             # Get container health status
             CONTAINER_EXISTS=$(sudo docker ps -a | grep coffee-restaurant-web-1 | wc -l)
@@ -198,7 +206,7 @@ jobs:
               fi
             done
 
-            if [ "${UNHEALTHY}" = "true" ]; then
+            if [ "${COMPOSE_FAILED}" = "true" ] || [ "${UNHEALTHY}" = "true" ]; then
               echo ""
               echo "╔════════════════════════════════════════════════════════════╗"
               echo "║          CONTAINER UNHEALTHY - COLLECTING DIAGNOSTICS      ║"
@@ -222,6 +230,10 @@ jobs:
 
               echo "=== 4. Docker Compose Logs ==="
               sudo docker compose -f docker-compose.prod.yml logs 2>&1 | tail -100
+              echo ""
+
+              echo "=== 5. Docker Compose Logs for web ==="
+              sudo docker compose -f docker-compose.prod.yml logs web 2>&1 | tail -100
               echo ""
 
               echo "╔════════════════════════════════════════════════════════════╗"
