@@ -22,7 +22,16 @@ DEBUG = os.environ.get('DEBUG', '1') == '1'
 
 # Parse ALLOWED_HOSTS and strip whitespace
 ALLOWED_HOSTS_STR = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1')
-ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',') if host.strip()]
+ALLOWED_HOSTS = []
+for host in ALLOWED_HOSTS_STR.split(','):
+    host = host.strip()
+    if host and host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host)
+
+# Always allow internal healthcheck hostnames
+for internal_host in ('localhost', '127.0.0.1'):
+    if internal_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(internal_host)
 
 # Parse CSRF_TRUSTED_ORIGINS and strip whitespace
 CSRF_TRUSTED_ORIGINS_STR = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
