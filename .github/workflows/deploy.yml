@@ -165,6 +165,71 @@ jobs:
             cd "${DEPLOY_DIR}"
             sudo docker pull "${IMAGE}:latest"
             sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            echo ">>> Konteynerlar: Started"
+
+            # ── 9. Healthcheck validation va diagnostics ──────────────────
+            echo ""
+            echo ">>> Healthcheck validation..."
+            sleep 8
+
+            # Get container health status
+            CONTAINER_EXISTS=$(sudo docker ps -a | grep coffee-restaurant-web-1 | wc -l)
+            if [ "${CONTAINER_EXISTS}" -eq 0 ]; then
+              echo "❌ ERROR: Container coffee-restaurant-web-1 does not exist!"
+              echo ""
+              echo "=== Docker PS -A ==="
+              sudo docker ps -a
+              exit 1
+            fi
+
+            # Check health status
+            for i in {1..20}; do
+              HEALTH=$(sudo docker inspect coffee-restaurant-web-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+              if [ "${HEALTH}" = "healthy" ]; then
+                echo "✅ Container health status: ${HEALTH}"
+                break
+              elif [ "${HEALTH}" = "unhealthy" ]; then
+                echo "❌ Container health status: UNHEALTHY"
+                UNHEALTHY=true
+                break
+              else
+                echo "    Attempt $i/20: Health status = ${HEALTH}"
+                sleep 3
+              fi
+            done
+
+            if [ "${UNHEALTHY}" = "true" ]; then
+              echo ""
+              echo "╔════════════════════════════════════════════════════════════╗"
+              echo "║          CONTAINER UNHEALTHY - COLLECTING DIAGNOSTICS      ║"
+              echo "╚════════════════════════════════════════════════════════════╝"
+              echo ""
+
+              echo "=== 1. Docker PS -A ==="
+              sudo docker ps -a
+              echo ""
+
+              echo "=== 2. Container Logs (Last 150 lines) ==="
+              sudo docker logs coffee-restaurant-web-1 2>&1 | tail -150
+              echo ""
+
+              echo "=== 3. Container State Inspector ==="
+              sudo docker inspect coffee-restaurant-web-1 --format='Health: {{.State.Health.Status}}
+Exit Code: {{.State.ExitCode}}
+Status: {{.State.Status}}
+Error: {{.State.Error}}'
+              echo ""
+
+              echo "=== 4. Docker Compose Logs ==="
+              sudo docker compose -f docker-compose.prod.yml logs 2>&1 | tail -100
+              echo ""
+
+              echo "╔════════════════════════════════════════════════════════════╗"
+              echo "║  DEPLOYMENT FAILED - Container did not become healthy      ║"
+              echo "╚════════════════════════════════════════════════════════════╝"
+              exit 1
+            fi
+
             sudo docker system prune -f
             echo ">>> Konteynerlar: OK"
 
