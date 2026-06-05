@@ -155,10 +155,12 @@ jobs:
             echo ">>> Repo: OK"
 
             # ── 7. .env fayl yaratish ──────────────────────────────────────
+            # Always include the production domains alongside whatever is in the secret
+            FULL_HOSTS="${ALLOWED_HOSTS},uzbekai.uz,www.uzbekai.uz"
             # CSRF_TRUSTED_ORIGINS: ALLOWED_HOSTS dagi har bir hostni https:// bilan
-            CSRF_ORIGINS=$(echo "${ALLOWED_HOSTS}" | tr ',' '\n' | sed 's|^|https://|' | paste -sd ',')
+            CSRF_ORIGINS=$(echo "${FULL_HOSTS}" | tr ',' '\n' | sort -u | sed 's|^|https://|' | paste -sd ',')
             printf 'DOCKER_IMAGE=%s\nDJANGO_SECRET_KEY=%s\nALLOWED_HOSTS=%s\nCSRF_TRUSTED_ORIGINS=%s\n' \
-              "${IMAGE}" "${DJANGO_SECRET_KEY}" "${ALLOWED_HOSTS}" "${CSRF_ORIGINS}" \
+              "${IMAGE}" "${DJANGO_SECRET_KEY}" "${FULL_HOSTS}" "${CSRF_ORIGINS}" \
               > "${DEPLOY_DIR}/.env"
             chmod 600 "${DEPLOY_DIR}/.env"
             echo ">>> .env: OK"
