@@ -5,7 +5,7 @@
 #  EC2_USER          — SSH foydalanuvchi (Ubuntu uchun: ubuntu)
 #  EC2_SSH_KEY       — .pem formatidagi private SSH kalit (to'liq matn)
 #  DJANGO_SECRET_KEY — Django secret key (50+ tasodifiy belgi)
-#  ALLOWED_HOSTS     — Vergul bilan: 54.12.34.56,yourdomain.com
+#  ALLOWED_HOSTS     — Vergul bilan: 54.12.34.56,uzbekai.uz,www.uzbekai.uz
 # ═══════════════════════════════════════════════════════════════════
 
 name: CI/CD Pipeline
@@ -155,8 +155,10 @@ jobs:
             echo ">>> Repo: OK"
 
             # ── 7. .env fayl yaratish ──────────────────────────────────────
-            printf 'DOCKER_IMAGE=%s\nDJANGO_SECRET_KEY=%s\nALLOWED_HOSTS=%s\nCSRF_TRUSTED_ORIGINS=http://%s\n' \
-              "${IMAGE}" "${DJANGO_SECRET_KEY}" "${ALLOWED_HOSTS}" "${EC2_HOST}" \
+            # CSRF_TRUSTED_ORIGINS: ALLOWED_HOSTS dagi har bir hostni https:// bilan
+            CSRF_ORIGINS=$(echo "${ALLOWED_HOSTS}" | tr ',' '\n' | sed 's|^|https://|' | paste -sd ',')
+            printf 'DOCKER_IMAGE=%s\nDJANGO_SECRET_KEY=%s\nALLOWED_HOSTS=%s\nCSRF_TRUSTED_ORIGINS=%s\n' \
+              "${IMAGE}" "${DJANGO_SECRET_KEY}" "${ALLOWED_HOSTS}" "${CSRF_ORIGINS}" \
               > "${DEPLOY_DIR}/.env"
             chmod 600 "${DEPLOY_DIR}/.env"
             echo ">>> .env: OK"
