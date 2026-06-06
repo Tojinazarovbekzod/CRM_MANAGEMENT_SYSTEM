@@ -178,14 +178,11 @@ jobs:
             sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate || COMPOSE_EXIT=$?
             echo ">>> Konteynerlar: Started (docker compose exit ${COMPOSE_EXIT})"
 
-            # ── 8.1. Superuser yaratish (agar yo'q bo'lsa) ─────────────────
+            # ── 8.1. Superuser yaratish yoki parolni yangilash ─────────────
             sleep 5
             sudo docker compose -f docker-compose.prod.yml exec -T web \
-              sh -c "DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_NAME}' \
-                     DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASS}' \
-                     DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL}' \
-                     python manage.py createsuperuser --noinput 2>/dev/null || true"
-            echo ">>> Superuser: OK (allaqachon mavjud bo'lsa o'zgartirilmadi)"
+              python manage.py shell -c "from django.contrib.auth import get_user_model; U=get_user_model(); u,c=U.objects.get_or_create(username='${DJANGO_SUPERUSER_NAME}'); u.set_password('${DJANGO_SUPERUSER_PASS}'); u.is_superuser=True; u.is_staff=True; u.email='${DJANGO_SUPERUSER_EMAIL}'; u.save(); print('created' if c else 'updated')"
+            echo ">>> Superuser: OK"
 
             # ── 9. Healthcheck validation va diagnostics ──────────────────
             echo ""
